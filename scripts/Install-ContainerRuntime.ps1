@@ -16,70 +16,87 @@ using namespace System.IO
 
 [CmdletBinding()]
 param (
-  [switch]
-  $Docker
+    [switch]
+    $Docker,
+    [switch]
+    $CreateHosts,
+    [switch]
+    $RestartWSL
 )
 
 $InformationPreference = [ActionPreference]::Continue
 
 $PSDefaultParameterValues = @{
-  "Select-String:SimpleMatch" = $true;
-  "Select-String:Quiet"       = $true;
+    'Select-String:SimpleMatch' = $true;
+    'Select-String:Quiet'       = $true;
 }
 
-$runtime = if ($Docker) { "docker" } else { "podman" }
+$runtime = if ($Docker) { 'docker' } else { 'podman' }
 
-if (-not  (wsl --list | Select-String "Ubuntu")) {
-  throw "Failed to detect Ubuntu installation in WSL"
+if (-not  (wsl --list | Select-String 'Ubuntu')) {
+    throw 'Failed to detect Ubuntu installation in WSL'
 }
 
-Write-Information "Running shell script"
+Write-Information 'Running shell script'
 
-$runtimeInstallScriptPath = [Path]::Join($PSScriptRoot, "install-container-runtime.sh")
+$runtimeInstallScriptPath = [Path]::Join($PSScriptRoot, 'install-container-runtime.sh')
 
-wsl -d Ubuntu bash ($runtimeInstallScriptPath -replace "C:", "/mnt/c" -replace "\\", "/") $runtime
+wsl -d Ubuntu bash ($runtimeInstallScriptPath -replace 'C:', '/mnt/c' -replace '\\', '/') $runtime
 
-Write-Information "Creating shims"
+Write-Information 'Creating shims'
 
-$localBin = [Path]::Join($Env:USERPROFILE, ".local", "bin")
+$localBin = [Path]::Join($Env:USERPROFILE, '.local', 'bin')
 
 [Directory]::CreateDirectory($localBin) | Out-Null
 
-$userPath = $Env:PATH -split ";" | Where-Object { $_.StartsWith($Env:USERPROFILE) }
+$userPath = $Env:PATH -split ';' | Where-Object { $_.StartsWith($Env:USERPROFILE) }
 
 if (-not $userPath -contains $localBin) {
-  Write-Information "Adding $localBin to PATH"
-  $userPath = @($localBin) + $userPath
-  [Environment]::SetEnvironmentVariable("Path", ($userPath -join ";"), [EnvironmentVariableTarget]::User)
+    Write-Information "Adding $localBin to PATH"
+    $userPath = @($localBin) + $userPath
+    [Environment]::SetEnvironmentVariable('Path', ($userPath -join ';'), [EnvironmentVariableTarget]::User)
 }
 
-$shims = ("docker", "docker-compose", $runtime, "$runtime-compose") | Select-Object -Unique
+$shims = ('docker', 'docker-compose', $runtime, "$runtime-compose") | Select-Object -Unique
 
-$shims.ForEach({
-    [File]::WriteAllText("$localBin\$_.ps1", "wsl -d Ubuntu $_ @Args")
-  })
-
-$hostsPath = [Path]::Join($Env:SYSTEMROOT, "System32", "drivers", "etc", "hosts")
-
-$targetHostsEntries = (
-  "0:0:0:0:0:0:0:1 wsl",
-  "0:0:0:0:0:0:0:1 $runtime"
+$shims.ForEach(
+    {
+        [File]::WriteAllText("$localBin\$_.ps1", "wsl -d Ubuntu $_ @Args")
+    }
 )
 
-$targetHostsEntries.ForEach({
-    if (-not (Select-String -Path $hostsPath $_)) {
-      Write-Information "Adding '$_' to hosts file"
-      [File]::AppendAllText($hostsPath, "`r`n$_")
-    }
-  })
+# Skip creating hosts file entries if -CreateHosts is not specified
+$hostsPath = [Path]::Join($Env:SYSTEMROOT, 'System32', 'drivers', 'etc', 'hosts')
+if ($CreateHosts) {
 
+    $targetHostsEntries = (
+        '0:0:0:0:0:0:0:1 wsl',
+        "0:0:0:0:0:0:0:1 $runtime"
+    )
 
-if ($Docker) {
-  Write-Information "Restarting WSL"
-  wsl --shutdown
-  wsl -d Ubuntu :
+    $targetHostsEntries.ForEach(
+        {
+            if (-not (Select-String -Path $hostsPath $_)) {
+                Write-Information "Adding '$_' to hosts file"
+                [File]::AppendAllText($hostsPath, "`r`n$_")
+            }
+        }
+    )
+}
+else {
+    Write-Information "-CreateHosts was not applied, please manually add '0:0:0:0:0:0:0:1 wsl' and '0:0:0:0:0:0:0:1 $runtime' to your hosts file ($($hostsPath))"
 }
 
-Write-Host -ForegroundColor Green "`nInstall successful! Try running $runtime or $runtime-compose`n"
-Write-Host -ForegroundColor Yellow "Press any key to exit"
+if ($Docker) {
+    Write-Information 'Docker installed and -RestartWSL not applied, please restart your WSL using "wsl --shutdown" & "wsl -d Ubuntu :"'
+    # if -RestartWSL is specified, restart wsl
+    if ($RestartWSL) {
+        Write-Information 'Restarting WSL'
+        wsl --shutdown
+        wsl -d Ubuntu :
+    }
+}
+
+Write-Host -ForegroundColor Green "`nInstall successful! Please restart your PowerShell session and after that, try running $runtime or $runtime-compose`n"
+Write-Host -ForegroundColor Yellow 'Press any key to exit'
 Read-Host
