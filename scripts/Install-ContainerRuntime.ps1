@@ -19,9 +19,7 @@ param (
     [switch]
     $Docker,
     [switch]
-    $CreateHosts,
-    [switch]
-    $RestartWSL
+    $CreateHosts
 )
 
 $InformationPreference = [ActionPreference]::Continue
@@ -88,13 +86,10 @@ else {
 }
 
 if ($Docker) {
-    Write-Information 'Docker installed and -RestartWSL not applied, please restart your WSL using "wsl --shutdown" & "wsl -d Ubuntu :"'
-    # if -RestartWSL is specified, restart wsl
-    if ($RestartWSL) {
-        Write-Information 'Restarting WSL'
-        wsl --shutdown
-        wsl -d Ubuntu :
-    }
+
+    Write-Information 'Restarting WSL'
+    wsl --shutdown
+    wsl -d Ubuntu :
 }
 
 Write-Host -ForegroundColor Green "`nInstall successful! Please restart your PowerShell session and after that, try running $runtime or $runtime-compose`n"
